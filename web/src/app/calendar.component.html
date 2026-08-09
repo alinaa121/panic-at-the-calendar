@@ -1,0 +1,161 @@
+<div class="calendar-container">
+  <!-- Controls Header -->
+  <div class="calendar-controls">
+    <div class="controls-left">
+      <button class="btn btn-primary" (click)="goToToday()">Today</button>
+      <button class="btn btn-icon" (click)="previousPeriod()">
+        <span class="arrow">‹</span>
+      </button>
+      <button class="btn btn-icon" (click)="nextPeriod()">
+        <span class="arrow">›</span>
+      </button>
+      <h2 class="current-period">{{ currentPeriodLabel }}</h2>
+    </div>
+    <div class="controls-right">
+      <div class="view-dropdown" [class.open]="dropdownOpen">
+        <button class="btn btn-toggle" (click)="toggleDropdown()">
+          <span class="view-icon">{{ getCurrentViewIcon() }}</span>
+          <span class="view-label">{{ getCurrentViewLabel() }}</span>
+          <span class="dropdown-arrow">▼</span>
+        </button>
+        <div class="dropdown-menu" *ngIf="dropdownOpen">
+          <button class="dropdown-item" [class.active]="viewMode === 'day'" (click)="setView('day')">
+            <span class="view-icon">D</span>
+            <span>Day</span>
+          </button>
+          <button class="dropdown-item" [class.active]="viewMode === 'week'" (click)="setView('week')">
+            <span class="view-icon">W</span>
+            <span>Week</span>
+          </button>
+          <button class="dropdown-item" [class.active]="viewMode === 'month'" (click)="setView('month')">
+            <span class="view-icon">M</span>
+            <span>Month</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Spinner -->
+  <div *ngIf="loading" class="loading-spinner">
+    <div class="spinner"></div>
+    <p>Loading events...</p>
+  </div>
+
+  <!-- Calendar Grid -->
+  <div class="calendar-grid" *ngIf="!loading">
+    <!-- Weekday Headers (hide in day view) -->
+    <div class="calendar-header" *ngIf="viewMode !== 'day'">
+      <div class="weekday-header" *ngFor="let day of weekDays">
+        {{ day }}
+      </div>
+    </div>
+
+    <!-- Day View Timeline -->
+    <div class="day-view-container" *ngIf="viewMode === 'day'">
+      <div class="day-view-content">
+        <div class="day-view-header">
+          <h3>{{ currentPeriodLabel }}</h3>
+          <p class="event-count">{{ getDayEventCount() }} event(s)</p>
+        </div>
+        
+        <div class="day-timeline" *ngIf="calendarDays[0] && calendarDays[0].events.length > 0">
+          <div 
+            *ngFor="let event of calendarDays[0]?.events" 
+            class="timeline-event"
+            (click)="selectEvent(event)">
+            <div class="timeline-time">
+              <span class="time-start">{{ formatTime(event.start) }}</span>
+              <span class="time-end">{{ formatTime(event.end) }}</span>
+            </div>
+            <div class="timeline-content">
+              <h4 class="timeline-title">{{ event.summary }}</h4>
+              <p class="timeline-location" *ngIf="event.location">
+                <span class="location-icon">•</span> {{ event.location }}
+              </p>
+              <p class="timeline-description" *ngIf="event.description">
+                {{ getDescriptionPreview(event.description) }}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="no-events" *ngIf="!calendarDays[0] || calendarDays[0].events.length === 0">
+          <div class="no-events-icon">—</div>
+          <p>No events scheduled</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Calendar Days (week and month view) -->
+    <div class="calendar-body" *ngIf="viewMode !== 'day'">
+      <div 
+        *ngFor="let day of calendarDays" 
+        class="calendar-day"
+        [class.other-month]="!day.isCurrentMonth"
+        [class.today]="day.isToday"
+        [class.has-events]="day.events.length > 0">
+        
+        <div class="day-header">
+          <span class="day-number">{{ day.date.getDate() }}</span>
+        </div>
+        
+        <div class="day-events">
+          <div 
+            *ngFor="let event of day.events" 
+            class="event-item"
+            (click)="selectEvent(event)"
+            [title]="event.summary">
+            <span class="event-time">{{ formatTime(event.start) }}</span>
+            <span class="event-title">{{ event.summary }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event Details Modal -->
+  <div class="modal-overlay" *ngIf="selectedEvent" (click)="closeEventDetails()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <button class="modal-close" (click)="closeEventDetails()">×</button>
+      
+      <div class="event-details">
+        <h3 class="event-details-title">{{ selectedEvent.summary }}</h3>
+        
+        <div class="event-detail-row">
+          <span class="detail-icon">DATE</span>
+          <div class="detail-content">
+            <div class="detail-label">Date</div>
+            <div class="detail-value">{{ formatEventDate(selectedEvent.start) }}</div>
+          </div>
+        </div>
+
+        <div class="event-detail-row">
+          <span class="detail-icon">TIME</span>
+          <div class="detail-content">
+            <div class="detail-label">Time</div>
+            <div class="detail-value">
+              {{ formatTime(selectedEvent.start) }} - {{ formatTime(selectedEvent.end) }}
+            </div>
+          </div>
+        </div>
+
+        <div class="event-detail-row" *ngIf="selectedEvent.location">
+          <span class="detail-icon">LOC</span>
+          <div class="detail-content">
+            <div class="detail-label">Location</div>
+            <div class="detail-value">{{ selectedEvent.location }}</div>
+          </div>
+        </div>
+
+        <div class="event-detail-row" *ngIf="selectedEvent.description">
+          <span class="detail-icon">INFO</span>
+          <div class="detail-content">
+            <div class="detail-label">Description</div>
+            <div class="detail-value" [innerHTML]="getCleanDescription(selectedEvent.description)"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
