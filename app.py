@@ -1,10 +1,18 @@
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from datetime import datetime, timedelta
 from typing import Optional
+from pathlib import Path
+import json
 from google_calendar.calendar_utils import Calendar
+from preferences.preference_manager import PreferenceManager
+from agents.agent import run_agent
 
 app = FastAPI(title="Calendar AI API", description="API for retrieving Google Calendar events")
+
+# Approvals endpoints
+APPROVALS_FILE = Path(__file__).resolve().parent / "pending_calendar_approvals.json"
 
 # Configure CORS
 app.add_middleware(
@@ -17,6 +25,42 @@ app.add_middleware(
 
 # Initialize the Calendar instance
 calendar = Calendar()
+preference_manager = PreferenceManager()
+
+#Pydantic base classes
+class ChatRequest(BaseModel):
+    """Request model for chat endpoint."""
+    message: str
+    max_iterations: int = 10
+
+class ApproveCreateRequest(BaseModel):
+    """Request model for approving a create event action."""
+    approval_id: str
+    start: str
+    end: str
+    summary: Optional[str] = None
+    location: Optional[str] = None
+    description: Optional[str] = None
+
+class ApproveUpdateRequest(BaseModel):
+    """Request model for approving an update event action."""
+    approval_id: str
+    event_id: str
+    start: Optional[str] = None
+    end: Optional[str] = None
+    summary: Optional[str] = None
+    location: Optional[str] = None
+    description: Optional[str] = None
+
+
+class ApproveDeleteRequest(BaseModel):
+    """Request model for approving a delete event action."""
+    approval_id: str
+    event_id: str
+
+class RejectApprovalRequest(BaseModel):
+    """Request model for rejecting an approval."""
+    approval_id: str
 
 
 def _normalize_optional_text(value: Optional[str]) -> Optional[str]:
@@ -35,6 +79,25 @@ def _normalize_optional_text(value: Optional[str]) -> Optional[str]:
         return None
 
     return normalized
+
+
+def _load_approvals():
+    """Load pending approvals from JSON file."""
+    if not APPROVALS_FILE.exists():
+        return {}
+    try:
+        return json.loads(APPROVALS_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_approvals(approvals: dict):
+    """Save approvals to JSON file."""
+    APPROVALS_FILE.write_text(
+        json.dumps(approvals, indent=2, ensure_ascii=True),
+        encoding="utf-8"
+    )
+
 
 @app.get("/")
 def read_root():
@@ -190,6 +253,210 @@ def update_event(event_id: str, start: Optional[str] = None, end: Optional[str] 
         "success": True,
         "event": event
     }
+
+@app.get("/preferences")
+def get_preferences():
+    """Fetch the current saved user preferences.
+
+    Returns:
+        dict: Response with success flag and full preferences markdown text.
+    """
+    preferences = preference_manager.read_preferences()
+    return {
+        "success": True,
+        "preferences": preferences,
+    }
+
+
+@app.post("/update_preferences")
+def update_preferences(new_input: str):
+    """Update stored user preferences from a new user input.
+
+    Args:
+        new_input (str): New user preference input to merge into saved preferences.
+
+    Returns:
+        dict: Response with success flag, whether preferences changed,
+            and the resulting preferences text when updated.
+    """
+    updated_preferences = preference_manager.update_preferences(new_input)
+    return {
+        "success": True,
+        "updated": updated_preferences is not None,
+        "preferences": updated_preferences,
+    }
+
+@app.post("/write_preferences")
+def write_preferences(preferences: str):
+    """Persist a reviewed preferences list.
+
+    Args:
+        preferences (str): The full reviewed preferences text to save.
+
+    Returns:
+        dict: Response with success flag and saved preferences text.
+    """
+    preference_manager.write_preferences(preferences)
+    return {
+        "success": True,
+        "preferences": preferences,
+    }
+
+
+@app.post("/chat")
+def chat(request: ChatRequest):
+    """Chat interface endpoint for the calendar agent.
+
+    Args:
+        request (ChatRequest): Chat request with message and optional max_iterations.
+
+    Returns:
+        dict: Agent result including status, agent_response, action_summary, and tool_actions.
+    """
+    return run_agent(user_input=request.message, max_iterations=request.max_iterations)
+
+
+@app.get("/pending_approvals")
+def get_pending_approvals():
+    """Get all pending calendar approvals.
+
+    Returns:
+        dict: Response with success flag and list of pending approvals.
+    """
+    approvals = _load_approvals()
+    return {
+        "success": True,
+        "approvals": list(approvals.values())
+    }
+
+
+@app.post("/approve_create")
+def approve_create_event(request: ApproveCreateRequest):
+    """Approve and execute a create event action.
+
+    Args:
+        request (ApproveCreateRequest): Approval request with event details.
+
+    Returns:
+        dict: Response with success flag and created event.
+    """
+    approvals = _load_approvals()
+    
+    if request.approval_id not in approvals:
+        return {
+            "success": False,
+            "message": "Approval not found"
+        }
+    
+    # Use existing create_event endpoint logic
+    result = create_event(
+        start=request.start,
+        end=request.end,
+        location=request.location,
+        description=request.description,
+        summary=request.summary
+    )
+    
+    # Remove the approval if successful
+    if result.get("success"):
+        del approvals[request.approval_id]
+        _save_approvals(approvals)
+    
+    return result
+
+
+@app.post("/approve_update")
+def approve_update_event(request: ApproveUpdateRequest):
+    """Approve and execute an update event action.
+
+    Args:
+        request (ApproveUpdateRequest): Approval request with update details.
+
+    Returns:
+        dict: Response with success flag.
+    """
+    approvals = _load_approvals()
+    
+    if request.approval_id not in approvals:
+        return {
+            "success": False,
+            "message": "Approval not found"
+        }
+    
+    # Use existing update_event endpoint logic
+    result = update_event(
+        event_id=request.event_id,
+        start=request.start,
+        end=request.end,
+        location=request.location,
+        description=request.description,
+        summary=request.summary
+    )
+    
+    # Remove the approval if successful
+    if result.get("success"):
+        del approvals[request.approval_id]
+        _save_approvals(approvals)
+    
+    return result
+
+
+@app.post("/approve_delete")
+def approve_delete_event(request: ApproveDeleteRequest):
+    """Approve and execute a delete event action.
+
+    Args:
+        request (ApproveDeleteRequest): Approval request with event ID.
+
+    Returns:
+        dict: Response with success flag.
+    """
+    approvals = _load_approvals()
+    
+    if request.approval_id not in approvals:
+        return {
+            "success": False,
+            "message": "Approval not found"
+        }
+    
+    # Use existing delete_event endpoint logic
+    result = delete_event(event_id=request.event_id)
+    
+    # Remove the approval if successful
+    if result.get("success"):
+        del approvals[request.approval_id]
+        _save_approvals(approvals)
+    
+    return result
+
+
+@app.post("/reject_approval")
+def reject_approval(request: RejectApprovalRequest):
+    """Reject and remove a pending approval.
+
+    Args:
+        request (RejectApprovalRequest): Rejection request with approval ID.
+
+    Returns:
+        dict: Response with success flag.
+    """
+    approvals = _load_approvals()
+    
+    if request.approval_id not in approvals:
+        return {
+            "success": False,
+            "message": "Approval not found"
+        }
+    
+    # Remove the approval
+    del approvals[request.approval_id]
+    _save_approvals(approvals)
+    
+    return {
+        "success": True,
+        "message": "Approval rejected"
+    }
+
 
 if __name__ == "__main__":
     import uvicorn
