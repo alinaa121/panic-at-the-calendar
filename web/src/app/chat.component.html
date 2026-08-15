@@ -1,0 +1,67 @@
+<div class="chat-container" [class.minimized]="isMinimized">
+  <!-- Chat Header -->
+  <div class="chat-header">
+    <div class="chat-header-left">
+      <h3 class="chat-title">Calendar Assistant</h3>
+    </div>
+    <div class="chat-header-actions">
+      <button class="header-btn" (click)="clearChat()" title="Clear chat">
+        Clear
+      </button>
+      <button class="header-btn" (click)="toggleMinimize()" title="Minimize">
+        {{ isMinimized ? 'Expand' : 'Minimize' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Chat Messages -->
+  <div class="chat-messages" *ngIf="!isMinimized">
+    <div 
+      *ngFor="let message of messages" 
+      class="message"
+      [class.user-message]="message.role === 'user'"
+      [class.assistant-message]="message.role === 'assistant'">
+      <div class="message-content">
+        <div class="message-text" [innerHTML]="formatMessageContent(message.content)"></div>
+        <div class="tools-used" *ngIf="message.toolsUsed && message.toolsUsed.length > 0">
+          <span class="tool-badge" *ngFor="let tool of message.toolsUsed">
+            Tool: {{ tool }}
+          </span>
+        </div>
+        <div class="message-time">{{ formatTime(message.timestamp) }}</div>
+      </div>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div class="message assistant-message" *ngIf="isLoading">
+      <div class="message-content">
+        <div class="message-text typing-indicator">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat Input -->
+  <div class="chat-input-container" *ngIf="!isMinimized">
+    <div class="chat-error" *ngIf="error">
+      <span class="error-icon">!</span>
+      {{ error }}
+    </div>
+    <div class="chat-input-wrapper">
+      <textarea 
+        class="chat-input"
+        [(ngModel)]="userInput"
+        (keypress)="onKeyPress($event)"
+        placeholder="Ask me about your calendar..."
+        rows="1"
+        [disabled]="isLoading"></textarea>
+      <button 
+        class="send-button"
+        (click)="sendMessage()"
+        [disabled]="!userInput.trim() || isLoading">
+        {{ isLoading ? 'Sending...' : 'Send' }}
+      </button>
+    </div>
+  </div>
+</div>

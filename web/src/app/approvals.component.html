@@ -1,0 +1,100 @@
+<div class="approvals-container">
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading-state">
+    <div class="spinner"></div>
+    <p>Loading pending approvals...</p>
+  </div>
+
+  <!-- Error Message -->
+  <div *ngIf="error" class="error-banner">
+    <span class="error-icon">!</span>
+    {{ error }}
+    <button class="retry-btn" (click)="loadApprovals()">Retry</button>
+  </div>
+
+  <!-- Empty State -->
+  <div *ngIf="!loading && approvals.length === 0 && !error" class="empty-state">
+    <div class="empty-icon">✓</div>
+    <h3>All caught up!</h3>
+    <p>No pending approvals at the moment.</p>
+  </div>
+
+  <!-- Approvals List -->
+  <div *ngIf="!loading && approvals.length > 0" class="approvals-list">
+    <div *ngFor="let approval of approvals" class="approval-card">
+      <div class="approval-header">
+        <div class="action-badge" [class.create]="approval.action === 'create_event'" 
+                                   [class.update]="approval.action === 'update_event'"
+                                   [class.delete]="approval.action === 'delete_event'">
+          {{ getActionLabel(approval.action) }}
+        </div>
+        <span class="approval-time">{{ formatCreatedAt(approval.created_at) }}</span>
+      </div>
+
+      <div class="approval-body">
+        <h4 class="approval-summary">{{ approval.summary }}</h4>
+
+        <div class="approval-details">
+          <div class="detail-row" *ngIf="approval.payload.summary">
+            <span class="detail-label">Event:</span>
+            <span class="detail-value">{{ approval.payload.summary }}</span>
+          </div>
+
+          <div class="detail-row" *ngIf="approval.payload.start">
+            <span class="detail-label">Start:</span>
+            <span class="detail-value">{{ formatDate(approval.payload.start) }}</span>
+          </div>
+
+          <div class="detail-row" *ngIf="approval.payload.end">
+            <span class="detail-label">End:</span>
+            <span class="detail-value">{{ formatDate(approval.payload.end) }}</span>
+          </div>
+
+          <div class="detail-row" *ngIf="approval.payload.location">
+            <span class="detail-label">Location:</span>
+            <span class="detail-value">{{ approval.payload.location }}</span>
+          </div>
+
+          <div class="detail-row" *ngIf="approval.payload.description">
+            <span class="detail-label">Description:</span>
+            <span class="detail-value">{{ approval.payload.description }}</span>
+          </div>
+        </div>
+
+        <!-- Current event info for updates/deletes -->
+        <div class="current-event-info" *ngIf="approval.review_context?.current_event">
+          <div class="info-label">Current Event:</div>
+          <div class="info-content">
+            <div class="detail-row">
+              <span class="detail-label">Title:</span>
+              <span class="detail-value">{{ approval.review_context?.current_event?.summary }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Start:</span>
+              <span class="detail-value">{{ formatDate(approval.review_context?.current_event?.start || '') }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">End:</span>
+              <span class="detail-value">{{ formatDate(approval.review_context?.current_event?.end || '') }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="approval-actions">
+        <button 
+          class="btn btn-approve" 
+          (click)="approveAction(approval)"
+          [disabled]="processingApproval">
+          {{ processingApproval ? 'Processing...' : 'Approve' }}
+        </button>
+        <button 
+          class="btn btn-reject" 
+          (click)="rejectAction(approval)"
+          [disabled]="processingApproval">
+          Reject
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
