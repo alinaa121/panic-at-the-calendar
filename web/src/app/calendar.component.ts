@@ -1,7 +1,9 @@
 import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { CalendarService, CalendarEvent } from './calendar.service';
+import { finalize } from 'rxjs/operators';
 
 interface CalendarDay {
   date: Date;
@@ -13,7 +15,7 @@ interface CalendarDay {
 @Component({
   selector: 'app-calendar',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   templateUrl: './calendar.component.html',
   styleUrls: ['./calendar.component.css'],
   host: {
@@ -32,6 +34,30 @@ export class CalendarComponent implements OnInit {
   loading: boolean = false;
   selectedEvent: CalendarEvent | null = null;
   dropdownOpen: boolean = false;
+  createModalOpen: boolean = false;
+  editModalOpen: boolean = false;
+  creatingEvent: boolean = false;
+  updatingEvent: boolean = false;
+  deletingEvent: boolean = false;
+  dragUpdatingEvent: boolean = false;
+  draggingEvent: CalendarEvent | null = null;
+  dragOverDayKey: string | null = null;
+  actionError: string = '';
+  newEvent = {
+    summary: '',
+    location: '',
+    description: '',
+    start: '',
+    end: ''
+  };
+  editEvent = {
+    id: '',
+    summary: '',
+    location: '',
+    description: '',
+    start: '',
+    end: ''
+  };
 
   constructor(
     private calendarService: CalendarService,
@@ -92,15 +118,16 @@ export class CalendarComponent implements OnInit {
   }
 
   loadEvents(startDate: Date, endDate: Date) {
-    this.calendarService.getEvents(startDate, endDate).subscribe({
+    this.calendarService.getEvents(startDate, endDate)
+      .pipe(finalize(() => { this.loading = false; }))
+      .subscribe({
       next: (response) => {
-        this.generateCalendarDays(startDate, endDate, response.events);
-        this.loading = false;
+        const safeEvents = Array.isArray(response?.events) ? response.events : [];
+        this.generateCalendarDays(startDate, endDate, safeEvents);
       },
       error: (error) => {
         console.error('Error loading events:', error);
         this.generateCalendarDays(startDate, endDate, []);
-        this.loading = false;
       }
     });
   }
@@ -209,6 +236,234 @@ export class CalendarComponent implements OnInit {
 
   closeEventDetails() {
     this.selectedEvent = null;
+    this.actionError = '';
+  }
+
+  openCreateEventModal() {
+    this.createModalOpen = true;
+    this.actionError = '';
+
+    const start = new Date();
+    start.setMinutes(0, 0, 0);
+    start.setHours(start.getHours() + 1);
+
+    const end = new Date(start);
+    end.setHours(end.getHours() + 1);
+
+    this.newEvent = {
+      summary: '',
+      location: '',
+      description: '',
+      start: this.toDatetimeLocal(start),
+      end: this.toDatetimeLocal(end)
+    };
+  }
+
+  closeCreateEventModal() {
+    this.createModalOpen = false;
+    this.actionError = '';
+  }
+
+  openEditEventModal() {
+    if (!this.selectedEvent) {
+      return;
+    }
+
+    this.actionError = '';
+    this.editModalOpen = true;
+    this.editEvent = {
+      id: this.selectedEvent.id,
+      summary: this.selectedEvent.summary || '',
+      location: this.selectedEvent.location || '',
+      description: this.toPlainText(this.selectedEvent.description),
+      start: this.toDatetimeLocal(new Date(this.selectedEvent.start)),
+      end: this.toDatetimeLocal(new Date(this.selectedEvent.end))
+    };
+  }
+
+  closeEditEventModal() {
+    this.editModalOpen = false;
+    this.actionError = '';
+  }
+
+  createEvent() {
+    this.actionError = '';
+
+    if (!this.newEvent.start || !this.newEvent.end) {
+      this.actionError = 'Start and end are required.';
+      return;
+    }
+
+    if (new Date(this.newEvent.end) <= new Date(this.newEvent.start)) {
+      this.actionError = 'End time must be after start time.';
+      return;
+    }
+
+    this.creatingEvent = true;
+    this.calendarService.createEvent({
+      start: this.newEvent.start,
+      end: this.newEvent.end,
+      summary: this.newEvent.summary,
+      location: this.newEvent.location,
+      description: this.newEvent.description
+    }).subscribe({
+      next: () => {
+        this.creatingEvent = false;
+        this.closeCreateEventModal();
+        this.loadCalendar();
+      },
+      error: (error) => {
+        console.error('Error creating event:', error);
+        this.creatingEvent = false;
+        this.actionError = 'Failed to create event.';
+      }
+    });
+  }
+
+  updateEvent() {
+    this.actionError = '';
+
+    if (!this.editEvent.id) {
+      this.actionError = 'Missing event ID for update.';
+      return;
+    }
+
+    if (!this.editEvent.start || !this.editEvent.end) {
+      this.actionError = 'Start and end are required.';
+      return;
+    }
+
+    if (new Date(this.editEvent.end) <= new Date(this.editEvent.start)) {
+      this.actionError = 'End time must be after start time.';
+      return;
+    }
+
+    this.updatingEvent = true;
+    this.calendarService.updateEvent(this.editEvent.id, {
+      start: this.editEvent.start,
+      end: this.editEvent.end,
+      summary: this.editEvent.summary,
+      location: this.editEvent.location,
+      description: this.editEvent.description,
+    }).subscribe({
+      next: () => {
+        this.updatingEvent = false;
+        this.closeEditEventModal();
+        this.closeEventDetails();
+        this.loadCalendar();
+      },
+      error: (error) => {
+        console.error('Error updating event:', error);
+        this.updatingEvent = false;
+        this.actionError = 'Failed to update event.';
+      }
+    });
+  }
+
+  deleteSelectedEvent() {
+    if (!this.selectedEvent) {
+      return;
+    }
+
+    this.actionError = '';
+    this.deletingEvent = true;
+
+    this.calendarService.deleteEvent(this.selectedEvent.id).subscribe({
+      next: () => {
+        this.deletingEvent = false;
+        this.closeEventDetails();
+        this.loadCalendar();
+      },
+      error: (error) => {
+        console.error('Error deleting event:', error);
+        this.deletingEvent = false;
+        this.actionError = 'Failed to delete event.';
+      }
+    });
+  }
+
+  onEventDragStart(event: DragEvent, calendarEvent: CalendarEvent) {
+    this.draggingEvent = calendarEvent;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', calendarEvent.id);
+    }
+  }
+
+  onEventDragEnd() {
+    this.draggingEvent = null;
+    this.dragOverDayKey = null;
+  }
+
+  onDayDragOver(event: DragEvent, day: CalendarDay) {
+    event.preventDefault();
+    if (!this.draggingEvent) {
+      return;
+    }
+
+    this.dragOverDayKey = day.date.toDateString();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  }
+
+  onDayDragLeave(day: CalendarDay) {
+    if (this.dragOverDayKey === day.date.toDateString()) {
+      this.dragOverDayKey = null;
+    }
+  }
+
+  onEventDrop(event: DragEvent, day: CalendarDay) {
+    event.preventDefault();
+    this.dragOverDayKey = null;
+
+    if (!this.draggingEvent || this.dragUpdatingEvent) {
+      return;
+    }
+
+    const originalStart = new Date(this.draggingEvent.start);
+    const originalEnd = new Date(this.draggingEvent.end);
+    const durationMs = originalEnd.getTime() - originalStart.getTime();
+
+    const nextStart = new Date(day.date);
+    nextStart.setHours(
+      originalStart.getHours(),
+      originalStart.getMinutes(),
+      originalStart.getSeconds(),
+      originalStart.getMilliseconds()
+    );
+    const nextEnd = new Date(nextStart.getTime() + durationMs);
+
+    if (nextStart.getTime() === originalStart.getTime() && nextEnd.getTime() === originalEnd.getTime()) {
+      this.draggingEvent = null;
+      return;
+    }
+
+    this.dragUpdatingEvent = true;
+    this.calendarService.updateEvent(this.draggingEvent.id, {
+      start: this.toDatetimeLocal(nextStart),
+      end: this.toDatetimeLocal(nextEnd),
+      summary: this.draggingEvent.summary,
+      location: this.draggingEvent.location,
+      description: this.draggingEvent.description,
+    }).subscribe({
+      next: () => {
+        this.draggingEvent = null;
+        this.dragUpdatingEvent = false;
+        this.loadCalendar();
+      },
+      error: (error) => {
+        console.error('Error dragging event:', error);
+        this.draggingEvent = null;
+        this.dragUpdatingEvent = false;
+        this.actionError = 'Failed to reschedule event by drag-and-drop.';
+      }
+    });
+  }
+
+  private toDatetimeLocal(value: Date): string {
+    const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
   }
 
   get currentPeriodLabel(): string {
@@ -267,5 +522,15 @@ export class CalendarComponent implements OnInit {
     
     // Return first 100 characters
     return text.length > 100 ? text.substring(0, 100) + '...' : text;
+  }
+
+  private toPlainText(description: string | undefined): string {
+    if (!description) {
+      return '';
+    }
+
+    const temp = document.createElement('div');
+    temp.innerHTML = description;
+    return (temp.textContent || temp.innerText || '').trim();
   }
 }

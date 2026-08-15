@@ -12,6 +12,7 @@
       <h2 class="current-period">{{ currentPeriodLabel }}</h2>
     </div>
     <div class="controls-right">
+      <button class="btn btn-create" (click)="openCreateEventModal()">+ New Event</button>
       <div class="view-dropdown" [class.open]="dropdownOpen">
         <button class="btn btn-toggle" (click)="toggleDropdown()">
           <span class="view-icon">{{ getCurrentViewIcon() }}</span>
@@ -94,7 +95,11 @@
         class="calendar-day"
         [class.other-month]="!day.isCurrentMonth"
         [class.today]="day.isToday"
-        [class.has-events]="day.events.length > 0">
+        [class.has-events]="day.events.length > 0"
+        [class.drag-over]="dragOverDayKey === day.date.toDateString()"
+        (dragover)="onDayDragOver($event, day)"
+        (dragleave)="onDayDragLeave(day)"
+        (drop)="onEventDrop($event, day)">
         
         <div class="day-header">
           <span class="day-number">{{ day.date.getDate() }}</span>
@@ -104,6 +109,9 @@
           <div 
             *ngFor="let event of day.events" 
             class="event-item"
+            draggable="true"
+            (dragstart)="onEventDragStart($event, event)"
+            (dragend)="onEventDragEnd()"
             (click)="selectEvent(event)"
             [title]="event.summary">
             <span class="event-time">{{ formatTime(event.start) }}</span>
@@ -114,13 +122,14 @@
     </div>
   </div>
 
-  <!-- Event Details Modal -->
   <div class="modal-overlay" *ngIf="selectedEvent" (click)="closeEventDetails()">
     <div class="modal-content" (click)="$event.stopPropagation()">
       <button class="modal-close" (click)="closeEventDetails()">×</button>
       
       <div class="event-details">
         <h3 class="event-details-title">{{ selectedEvent.summary }}</h3>
+
+        <div class="action-error" *ngIf="actionError">{{ actionError }}</div>
         
         <div class="event-detail-row">
           <span class="detail-icon">DATE</span>
@@ -154,6 +163,107 @@
             <div class="detail-label">Description</div>
             <div class="detail-value" [innerHTML]="getCleanDescription(selectedEvent.description)"></div>
           </div>
+        </div>
+
+        <div class="event-actions">
+          <button class="btn btn-secondary" (click)="openEditEventModal()">Edit Event</button>
+          <button class="btn btn-danger" (click)="deleteSelectedEvent()" [disabled]="deletingEvent">
+            {{ deletingEvent ? 'Deleting...' : 'Delete Event' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Event Modal -->
+  <div class="modal-overlay" *ngIf="createModalOpen" (click)="closeCreateEventModal()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <button class="modal-close" (click)="closeCreateEventModal()">×</button>
+
+      <div class="event-details">
+        <h3 class="event-details-title">Create Event</h3>
+
+        <div class="action-error" *ngIf="actionError">{{ actionError }}</div>
+
+        <div class="form-grid">
+          <label>
+            <span>Summary</span>
+            <input type="text" [(ngModel)]="newEvent.summary" placeholder="Weekly Sync" />
+          </label>
+
+          <label>
+            <span>Location</span>
+            <input type="text" [(ngModel)]="newEvent.location" placeholder="Conference Room A" />
+          </label>
+
+          <label>
+            <span>Start</span>
+            <input type="datetime-local" [(ngModel)]="newEvent.start" />
+          </label>
+
+          <label>
+            <span>End</span>
+            <input type="datetime-local" [(ngModel)]="newEvent.end" />
+          </label>
+
+          <label class="full-width">
+            <span>Description</span>
+            <textarea [(ngModel)]="newEvent.description" rows="4" placeholder="Agenda, notes, and context"></textarea>
+          </label>
+        </div>
+
+        <div class="event-actions">
+          <button class="btn" (click)="closeCreateEventModal()">Cancel</button>
+          <button class="btn btn-primary" (click)="createEvent()" [disabled]="creatingEvent">
+            {{ creatingEvent ? 'Creating...' : 'Create Event' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Event Modal -->
+  <div class="modal-overlay" *ngIf="editModalOpen" (click)="closeEditEventModal()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <button class="modal-close" (click)="closeEditEventModal()">×</button>
+
+      <div class="event-details">
+        <h3 class="event-details-title">Edit Event</h3>
+
+        <div class="action-error" *ngIf="actionError">{{ actionError }}</div>
+
+        <div class="form-grid">
+          <label>
+            <span>Summary</span>
+            <input type="text" [(ngModel)]="editEvent.summary" />
+          </label>
+
+          <label>
+            <span>Location</span>
+            <input type="text" [(ngModel)]="editEvent.location" />
+          </label>
+
+          <label>
+            <span>Start</span>
+            <input type="datetime-local" [(ngModel)]="editEvent.start" />
+          </label>
+
+          <label>
+            <span>End</span>
+            <input type="datetime-local" [(ngModel)]="editEvent.end" />
+          </label>
+
+          <label class="full-width">
+            <span>Description</span>
+            <textarea [(ngModel)]="editEvent.description" rows="4"></textarea>
+          </label>
+        </div>
+
+        <div class="event-actions">
+          <button class="btn" (click)="closeEditEventModal()">Cancel</button>
+          <button class="btn btn-primary" (click)="updateEvent()" [disabled]="updatingEvent">
+            {{ updatingEvent ? 'Saving...' : 'Save Changes' }}
+          </button>
         </div>
       </div>
     </div>
