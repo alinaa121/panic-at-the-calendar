@@ -1,0 +1,10 @@
+*env
+*credentials*
+*token*
+*modules*
+*.angular*
+*ipynb*
+*cache*
+.env
+*preferences.md
+*pending_calendar_approvals.json
