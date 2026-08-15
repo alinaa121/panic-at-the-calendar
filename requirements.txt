@@ -3,3 +3,8 @@ google-auth-httplib2
 google-auth-oauthlib
 fastapi
 uvicorn[standard]
+google-genai
+python-dotenv
+langchain>=0.1.0
+langchain_google_genai
+langgraph>=0.0.30
