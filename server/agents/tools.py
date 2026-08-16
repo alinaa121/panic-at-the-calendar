@@ -10,7 +10,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 from langchain_core.tools import tool
 
@@ -69,7 +68,7 @@ def _create_pending_approval(
 		"summary": summary,
 		"payload": payload,
 		"review_context": review_context or {},
-		"created_at": datetime.now(ZoneInfo("Asia/Singapore")).isoformat(),
+		"created_at": datetime.now(timezone(timedelta(hours=8))).isoformat(),
 	}
 	approvals[approval_id] = record
 	_save_pending_approvals(approvals)
@@ -89,7 +88,7 @@ def get_today_date_details() -> dict[str, Any]:
     Safety:
         Read-only. This tool never modifies calendar or approval state.
     """
-    now = datetime.now(ZoneInfo("Asia/Singapore"))
+    now = datetime.now(timezone(timedelta(hours=8)))
     return {
         "iso_date": now.date().isoformat(),
         "day_name": now.strftime("%A"),
@@ -177,7 +176,7 @@ def get_today_calendar_events() -> list[dict]:
 		Read-only. This tool never modifies calendar state.
 	"""
 	calendar = _get_calendar()
-	now = datetime.now(ZoneInfo("Asia/Singapore"))
+	now = datetime.now(timezone(timedelta(hours=8)))
 	start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 	end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
 	return calendar.get_events_by_date_range(start, end)
@@ -202,7 +201,7 @@ def get_upcoming_calendar_events(days: int = 7) -> list[dict]:
 		Read-only. This tool never modifies calendar state.
 	"""
 	calendar = _get_calendar()
-	start = datetime.now(ZoneInfo("Asia/Singapore"))
+	start = datetime.now(timezone(timedelta(hours=8)))
 	end = start + timedelta(days=days)
 	return calendar.get_events_by_date_range(start, end)
 

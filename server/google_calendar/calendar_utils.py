@@ -2,8 +2,6 @@ from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
 import os
-from zoneinfo import ZoneInfo
-from zoneinfo import ZoneInfoNotFoundError
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -30,11 +28,8 @@ class Calendar:
         self.authenticate()
 
     def _get_default_timezone(self):
-        """Returns Singapore timezone, with a fixed UTC+08:00 fallback."""
-        try:
-            return ZoneInfo("Asia/Singapore")
-        except ZoneInfoNotFoundError:
-            return timezone(timedelta(hours=8))
+        """Returns Singapore timezone as UTC+08:00."""
+        return timezone(timedelta(hours=8))
 
     def _invalidate_token(self, token_path):
         """Clears current credentials and removes a stale token file."""

@@ -1,11 +1,10 @@
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from pathlib import Path
 import json
-from zoneinfo import ZoneInfo
 from google_calendar.calendar_utils import Calendar
 from preferences.preference_manager import PreferenceManager
 from agents.agent import run_agent
@@ -142,7 +141,7 @@ def get_events(start_date: Optional[str] = Query(None, description="Start date i
         if start_date:
             start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
         else:
-            start = datetime.now(ZoneInfo("Asia/Singapore"))
+            start = datetime.now(timezone(timedelta(hours=8)))
         
         # Parse end_date or calculate from days
         if end_date:
