@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from langchain_core.tools import tool
 
@@ -68,7 +69,7 @@ def _create_pending_approval(
 		"summary": summary,
 		"payload": payload,
 		"review_context": review_context or {},
-		"created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+		"created_at": datetime.now(ZoneInfo("Asia/Singapore")).isoformat(),
 	}
 	approvals[approval_id] = record
 	_save_pending_approvals(approvals)
@@ -76,18 +77,19 @@ def _create_pending_approval(
 
 @tool
 def get_today_date_details() -> dict[str, Any]:
-    """Get today's date with day and month details.
+    """Get today's date with day and month details in Singapore time.
 
     Use this when the agent needs current date context (day name, month name,
     and related fields) without querying calendar events.
 
     Returns:
-        A dictionary containing today's ISO date and day/month/year details.
+        A dictionary containing today's ISO date and day/month/year details
+        in Singapore time (Asia/Singapore timezone).
 
     Safety:
         Read-only. This tool never modifies calendar or approval state.
     """
-    now = datetime.now()
+    now = datetime.now(ZoneInfo("Asia/Singapore"))
     return {
         "iso_date": now.date().isoformat(),
         "day_name": now.strftime("%A"),
@@ -162,18 +164,20 @@ def get_calendar_events_by_range(start_date: str, end_date: str) -> list[dict]:
 
 @tool
 def get_today_calendar_events() -> list[dict]:
-	"""Retrieve all calendar events scheduled for today.
+	"""Retrieve all calendar events scheduled for today in Singapore time.
 
 	Use this convenience tool for prompts specifically about today's schedule.
 
 	Returns:
-		A list of normalized event dictionaries for the current day.
+		A list of normalized event dictionaries for the current day in
+		Singapore time (Asia/Singapore timezone). All datetime values in
+		returned events are in Singapore time.
 
 	Safety:
 		Read-only. This tool never modifies calendar state.
 	"""
 	calendar = _get_calendar()
-	now = datetime.now()
+	now = datetime.now(ZoneInfo("Asia/Singapore"))
 	start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 	end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
 	return calendar.get_events_by_date_range(start, end)
@@ -181,22 +185,24 @@ def get_today_calendar_events() -> list[dict]:
 
 @tool
 def get_upcoming_calendar_events(days: int = 7) -> list[dict]:
-	"""Retrieve upcoming calendar events for the next N days.
+	"""Retrieve upcoming calendar events for the next N days in Singapore time.
 
 	Use this convenience tool for forward-looking schedule questions when an
 	exact date range is not necessary.
 
 	Args:
-		days: Number of days ahead to include, starting from now.
+		days: Number of days ahead to include, starting from current Singapore time.
 
 	Returns:
 		A list of normalized event dictionaries in the upcoming window.
+		All datetime values in returned events are in Singapore time
+		(Asia/Singapore timezone).
 
 	Safety:
 		Read-only. This tool never modifies calendar state.
 	"""
 	calendar = _get_calendar()
-	start = datetime.now()
+	start = datetime.now(ZoneInfo("Asia/Singapore"))
 	end = start + timedelta(days=days)
 	return calendar.get_events_by_date_range(start, end)
 
@@ -215,15 +221,15 @@ def request_create_calendar_event(
 	calendar without explicit human approval.
 
 	Args:
-		start: Proposed event start datetime string.
-		end: Proposed event end datetime string.
+		start: Proposed event start datetime string in Singapore time.
+		end: Proposed event end datetime string in Singapore time.
 		summary: Proposed event title.
 		location: Optional proposed location.
 		description: Optional proposed description.
 
 	Returns:
 		A pending approval record containing approval_id, status, action,
-		summary, payload, and created_at.
+		summary, payload, and created_at (in Singapore time).
 
 	Safety:
 		Approval-only. This tool does not write to Google Calendar.
@@ -256,16 +262,16 @@ def request_update_calendar_event(
 
 	Args:
 		event_id: The existing event ID to update.
-		start: Optional proposed replacement start datetime.
-		end: Optional proposed replacement end datetime.
+		start: Optional proposed replacement start datetime in Singapore time.
+		end: Optional proposed replacement end datetime in Singapore time.
 		summary: Optional proposed replacement title.
 		location: Optional proposed replacement location.
 		description: Optional proposed replacement description.
 
 	Returns:
 		If the event exists, returns a pending approval record with proposed and
-		current event data in the payload. If the event does not exist, returns
-		an error dictionary with status="error".
+		current event data in the payload (all datetimes in Singapore time).
+		If the event does not exist, returns an error dictionary with status="error".
 
 	Safety:
 		Approval-only. This tool does not write to Google Calendar.

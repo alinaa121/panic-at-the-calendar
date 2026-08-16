@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from pathlib import Path
 import json
+from zoneinfo import ZoneInfo
 from google_calendar.calendar_utils import Calendar
 from preferences.preference_manager import PreferenceManager
 from agents.agent import run_agent
@@ -123,24 +124,25 @@ def get_events(start_date: Optional[str] = Query(None, description="Start date i
 
     Args:
         start_date (Optional[str]): ISO-8601 datetime string for the range start.
-            If omitted, current time is used.
+            If omitted, current Singapore time is used.
         end_date (Optional[str]): ISO-8601 datetime string for the range end.
             If omitted, defaults to 1 day after `start_date`.
 
     Returns:
         dict: Response object with success flag, range metadata, and
-            an `events` array.
+            an `events` array. All datetime values are in Singapore time
+            (Asia/Singapore timezone).
 
     Notes:
         Datetimes are parsed with support for trailing `Z` by replacing it
         with `+00:00` before `datetime.fromisoformat`.
     """
     try:
-        # Parse start_date or use now
+        # Parse start_date or use Singapore time now
         if start_date:
             start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
         else:
-            start = datetime.now()
+            start = datetime.now(ZoneInfo("Asia/Singapore"))
         
         # Parse end_date or calculate from days
         if end_date:
@@ -171,14 +173,15 @@ def create_event(start: str, end: str, location: Optional[str] = None, descripti
     """Create a Google Calendar event.
 
     Args:
-        start (str): Event start datetime string.
-        end (str): Event end datetime string.
+        start (str): Event start datetime string in Singapore time.
+        end (str): Event end datetime string in Singapore time.
         location (Optional[str]): Event location.
         description (Optional[str]): Event description.
         summary (Optional[str]): Event title.
 
     Returns:
         dict: Response with success flag and created event payload.
+            All datetime values are in Singapore time (Asia/Singapore timezone).
     """
     event = calendar.create_event(start, end, location, description, summary)
     return {
@@ -208,14 +211,15 @@ def update_event(event_id: str, start: Optional[str] = None, end: Optional[str] 
 
     Args:
         event_id (str): Existing event ID to update.
-        start (Optional[str]): New start datetime string.
-        end (Optional[str]): New end datetime string.
+        start (Optional[str]): New start datetime string in Singapore time.
+        end (Optional[str]): New end datetime string in Singapore time.
         location (Optional[str]): New location.
         description (Optional[str]): New description.
         summary (Optional[str]): New event title.
 
     Returns:
         dict: Success payload with the original event data.
+            All datetime values are in Singapore time (Asia/Singapore timezone).
 
     Notes:
         This endpoint currently performs update as delete + create.

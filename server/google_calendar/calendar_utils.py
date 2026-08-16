@@ -169,6 +169,8 @@ class Calendar:
 
         Returns:
             dict: Event payload if found, or None if not found.
+                All datetime values in the returned event are in Singapore time
+                (Asia/Singapore timezone).
         """
         try:
             self._ensure_authenticated()
@@ -185,17 +187,26 @@ class Calendar:
             print(f"An error occurred while retrieving event {event_id}: {error}")
             return None
         
-    def get_events_by_date_range(self, start_date=datetime.now(), end_date=datetime.now() + timedelta(days=1)):
+    def get_events_by_date_range(self, start_date=None, end_date=None):
         """
         Retrieves events from the user's Google Calendar between specified dates.
 
         Args:
-            start_date (datetime): The start date/time for the event range.
-            end_date (datetime): The end date/time for the event range.
+            start_date (datetime | str): The start date/time for the event range.
+                If None, defaults to current Singapore time.
+            end_date (datetime | str): The end date/time for the event range.
+                If None, defaults to 1 day after start_date in Singapore time.
 
         Returns:
             list: A list of events within the specified date range.
+                All datetime values in returned events are in Singapore time
+                (Asia/Singapore timezone).
         """
+        # Default to Singapore time if not provided
+        if start_date is None:
+            start_date = datetime.now(self.default_timezone)
+        if end_date is None:
+            end_date = datetime.now(self.default_timezone) + timedelta(days=1)
         try:
             self._ensure_authenticated()
 
@@ -245,14 +256,16 @@ class Calendar:
         Creates a new Google Calendar event on the primary calendar.
 
         Args:
-            start (datetime | str): Event start date/time.
-            end (datetime | str): Event end date/time.
+            start (datetime | str): Event start date/time in Singapore time.
+            end (datetime | str): Event end date/time in Singapore time.
             location (str): Optional event location.
             description (str): Optional event description.
             summary (str): Event title/summary.
 
         Returns:
             dict: The created event payload, or None if creation fails.
+                All datetime values in the returned event are in Singapore time
+                (Asia/Singapore timezone).
         """
         try:
             self._ensure_authenticated()
