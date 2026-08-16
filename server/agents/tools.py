@@ -245,6 +245,198 @@ def request_create_calendar_event(
 
 
 @tool
+def request_batch_calendar_operations(
+	operations: list[dict[str, Any]],
+) -> dict[str, Any]:
+	"""Create pending approval requests for multiple calendar operations (create/update/delete) in one batch.
+
+	Use this when the agent wants to perform multiple calendar operations efficiently.
+	Each operation must not write to the calendar without explicit human approval.
+
+	Args:
+		operations: List of operation dictionaries (max 20). Each dictionary must contain:
+			- action: Operation type - "create", "update", or "delete" (required)
+			
+			For "create" action:
+				- start: Event start datetime string in Singapore time (required)
+				- end: Event end datetime string in Singapore time (required)
+				- summary: Event title (required)
+				- location: Optional location (optional)
+				- description: Optional description (optional)
+			
+			For "update" action:
+				- event_id: The existing event ID to update (required)
+				- start: New start datetime in Singapore time (optional)
+				- end: New end datetime in Singapore time (optional)
+				- summary: New title (optional)
+				- location: New location (optional)
+				- description: New description (optional)
+			
+			For "delete" action:
+				- event_id: The existing event ID to delete (required)
+
+	Returns:
+		A dictionary containing:
+			- status: "success", "partial_success", or "error"
+			- count: Number of approvals created
+			- approvals: List of pending approval records
+			- errors: List of any validation errors
+
+	Safety:
+		Approval-only. This tool does not write to Google Calendar.
+	"""
+	# Validate count
+	if len(operations) == 0:
+		return {
+			"status": "error",
+			"count": 0,
+			"approvals": [],
+			"errors": ["No operations provided. Please provide at least one operation."],
+		}
+	
+	if len(operations) > 20:
+		return {
+			"status": "error",
+			"count": 0,
+			"approvals": [],
+			"errors": [f"Too many operations. Maximum 20 operations allowed, but {len(operations)} provided."],
+		}
+	
+	# Process operations
+	approvals = []
+	errors = []
+	calendar = _get_calendar()
+	
+	for idx, operation in enumerate(operations):
+		try:
+			# Validate operation structure
+			if not isinstance(operation, dict):
+				errors.append(f"Operation {idx + 1}: Must be a dictionary")
+				continue
+			
+			action = operation.get("action")
+			if not action:
+				errors.append(f"Operation {idx + 1}: Missing required field 'action'")
+				continue
+			
+			if action not in ["create", "update", "delete"]:
+				errors.append(f"Operation {idx + 1}: Invalid action '{action}'. Must be 'create', 'update', or 'delete'")
+				continue
+			
+			# Handle CREATE action
+			if action == "create":
+				start = operation.get("start")
+				end = operation.get("end")
+				summary = operation.get("summary")
+				
+				if not start:
+					errors.append(f"Operation {idx + 1} (create): Missing required field 'start'")
+					continue
+				if not end:
+					errors.append(f"Operation {idx + 1} (create): Missing required field 'end'")
+					continue
+				if not summary:
+					errors.append(f"Operation {idx + 1} (create): Missing required field 'summary'")
+					continue
+				
+				location = operation.get("location", "")
+				description = operation.get("description", "")
+				
+				payload = {
+					"start": start,
+					"end": end,
+					"summary": summary,
+					"location": location or None,
+					"description": description or None,
+				}
+				summary_text = f"Create event '{summary}' from {start} to {end}."
+				approval = _create_pending_approval("create_event", payload, summary_text)
+				approvals.append(approval)
+			
+			# Handle UPDATE action
+			elif action == "update":
+				event_id = operation.get("event_id")
+				if not event_id:
+					errors.append(f"Operation {idx + 1} (update): Missing required field 'event_id'")
+					continue
+				
+				current_event = calendar.get_event_by_id(event_id)
+				if current_event is None:
+					errors.append(f"Operation {idx + 1} (update): Event with ID {event_id} not found")
+					continue
+				
+				payload = {"event_id": event_id}
+				start = operation.get("start")
+				end = operation.get("end")
+				summary = operation.get("summary")
+				location = operation.get("location")
+				description = operation.get("description")
+				
+				if start is not None:
+					payload["start"] = start
+				if end is not None:
+					payload["end"] = end
+				if summary is not None:
+					payload["summary"] = summary
+				if location is not None:
+					payload["location"] = location
+				if description is not None:
+					payload["description"] = description
+				
+				review_context = {
+					"current_event": current_event,
+					"resolved_event_after_update": {
+						"event_id": event_id,
+						"start": payload.get("start", current_event.get("start")),
+						"end": payload.get("end", current_event.get("end")),
+						"summary": payload.get("summary", current_event.get("summary")),
+						"location": payload.get("location", current_event.get("location")),
+						"description": payload.get("description", current_event.get("description")),
+					},
+				}
+				summary_text = f"Update event '{current_event.get('summary', 'Untitled Event')}' ({event_id}) with proposed new details."
+				approval = _create_pending_approval("update_event", payload, summary_text, review_context)
+				approvals.append(approval)
+			
+			# Handle DELETE action
+			elif action == "delete":
+				event_id = operation.get("event_id")
+				if not event_id:
+					errors.append(f"Operation {idx + 1} (delete): Missing required field 'event_id'")
+					continue
+				
+				current_event = calendar.get_event_by_id(event_id)
+				if current_event is None:
+					errors.append(f"Operation {idx + 1} (delete): Event with ID {event_id} not found")
+					continue
+				
+				payload = {"event_id": event_id}
+				review_context = {"current_event": current_event}
+				summary_text = f"Delete event '{current_event.get('summary', 'Untitled Event')}' scheduled from {current_event.get('start')} to {current_event.get('end')}."
+				approval = _create_pending_approval("delete_event", payload, summary_text, review_context)
+				approvals.append(approval)
+			
+		except Exception as e:
+			errors.append(f"Operation {idx + 1}: {str(e)}")
+	
+	# Return results
+	if errors and len(approvals) == 0:
+		return {
+			"status": "error",
+			"count": 0,
+			"approvals": [],
+			"errors": errors,
+		}
+	
+	return {
+		"status": "success" if not errors else "partial_success",
+		"count": len(approvals),
+		"approvals": approvals,
+		"errors": errors if errors else [],
+	}
+
+
+@tool
 def request_update_calendar_event(
 	event_id: str,
 	start: Optional[str] = None,
@@ -399,6 +591,7 @@ calendar_tools = [
 	get_today_calendar_events,
 	get_upcoming_calendar_events,
 	request_create_calendar_event,
+	request_batch_calendar_operations,
 	request_update_calendar_event,
 	request_delete_calendar_event,
 	get_pending_calendar_approval,
